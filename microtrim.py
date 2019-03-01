@@ -12,13 +12,14 @@ from pyxdameraulevenshtein import damerau_levenshtein_distance as dleven
 from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance as ndleven
 from itertools import product
 
+# TODO - Make options configurable through argparse
 version = 1
 inDirPath = './'
 adapter = 'TGGAATTCTCGGGTGCCAAGG'
 matches = 0
 trimFirst = 4
 ignoreAfter = 10
-outFilePath = './SRR8311267.v5.test'
+outFilePath = './SRR8311267.trimmed.fq'
 
 abc = ('A','C','G','T')
 adapters = set()
@@ -33,7 +34,7 @@ def addNewAdapterToSet(ad, adSet):
         time.sleep(.05)
     return adSet
 
-# V3
+# V2 (~1000 adapter variants - slower)
 def makeAdaptersV2(adapters):
     adapters.add(cutAdapter)
     if verbose:
@@ -72,11 +73,11 @@ def makeAdaptersV2(adapters):
     print(len(adapters))
     return adapters
 
-# V1
+# V1 (~100 adapter variants - faster)
 def makeAdaptersV1(adapters):
     adapters.add(adapter[:-8])
     for i, x in enumerate(adapter):
-        for j in [x for x in abc]:
+        for j in abc:
             ad = adapter[:i] + j + adapter[i+1:]
             adapters.add(ad[:-8])
             for l in abc:
@@ -114,9 +115,10 @@ if trimFirst == 0:
 else:    
     print(f'Trimming the first {trimFirst} bases')
 print(f'Trimming adapter: {adapter}')
-print(f'Considering only first {ignoreAfter} bases of adapter: {adapter[:ignoreAfter]}')
+if version == 2:
+    print(f'Considering only first {ignoreAfter} bases of adapter: {adapter[:ignoreAfter]}')
 print(f'Considering {len(adapters)} possible variants of the adapter')
-print(f'Trimming all bases after the adapter')
+print(f'Trimming all bases after the adapter (if present)')
 print(f'Saving to file: {outFilePath}')
 print()
 
@@ -151,6 +153,7 @@ with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
                 #    print(line)
                 #    time.sleep(.3)
             #else:
+                # Print unmatched sequences
                 #print(f'{i:06}. {line[:-1]}')
                 #time.sleep(.3)
         elif i % 2 != 0 and match:
@@ -161,7 +164,8 @@ with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
             prevLine = line[:-3] + finalLength
     
     print(f'Trimmed {count} lines, found {matches} matches\n')
-            
+    
+    # TODO - Fix Levenshtein distance matching        
     """
     else:
         for j, char in enumerate(line[10:-len(adapter)-1]):
@@ -177,9 +181,10 @@ with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
                 print()
     sys.stdout.write(f'\r{matches}\r')
     """
+    # Used to print matches 
     #if matches >= 5000:
         #sys.exit()
-        #time.sleep(1)head 
+        #time.sleep(1) 
         #matches = re.findall('', line)
         #for match in matches:
         #    adapterMatch = line[index:index+len(adapter)]
