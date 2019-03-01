@@ -1,0 +1,2 @@
+python-Levenshtein==0.12.0
+pyxDamerauLevenshtein==1.5.3
