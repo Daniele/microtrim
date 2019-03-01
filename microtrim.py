@@ -7,25 +7,39 @@ import sys
 import mmap
 import json
 import time
+import argparse
 import Levenshtein
 from pyxdameraulevenshtein import damerau_levenshtein_distance as dleven
 from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance as ndleven
 from itertools import product
 
-# TODO - Make options configurable through argparse
-version = 1
-inDirPath = './'
-adapter = 'TGGAATTCTCGGGTGCCAAGG'
-matches = 0
-trimFirst = 4
-ignoreAfter = 10
-outFilePath = './SRR8311267.trimmed.fq'
+parser = argparse.ArgumentParser()
+parser.add_argument('-V', '--version', help='algorithm version', default = 1)
+parser.add_argument('-a', '--adapter', help='adapter to remove', default = 'TGGAATTCTCGGGTGCCAAGG')
+parser.add_argument('-f', '--trim_first', help='number of initial bases to trim', default = 4)
+parser.add_argument('-l', '--trim_last', help='number of final bases to trim', default = 0)
+parser.add_argument('-m', '--match_only', help='match only the first X bases of adapter', default = 15)
+parser.add_argument('-i', '--in_file', help='input file', default = './SRR8311267.fastq')
+parser.add_argument('-o', '--out_file', help='output file', default = './trimmed.fq')
+parser.add_argument('-q', '--quiet', help='suppress output', action = 'store_true')
+parser.add_argument('-v', '--verbose', help='print additional information', action = 'store_true')
+args = parser.parse_args()
 
+version = args.version
+adapter = args.adapter
+trimFirst = args.trim_first
+trimLast = args.trim_last
+matchOnly = args.match_only
+inFilePath = args.in_file
+outFilePath = args.out_file
+verbose = args.verbose
+quiet = args.quiet
+
+matches = 0
 abc = ('A','C','G','T')
 adapters = set()
 adLength = len(adapter)
-cutAdapter = adapter[:ignoreAfter]
-verbose = False
+cutAdapter = adapter[:matchOnly]
 
 def addNewAdapterToSet(ad, adSet):
     adSet.add(ad)
@@ -47,8 +61,8 @@ def makeAdaptersV2(adapters):
         # Adapter with wrong substitution of 1 base
         for j in abc:
             ad = cutAdapter[:i] + j + cutAdapter[i+1:]
-            adapters = addNewAdapterToSet(ad[:ignoreAfter], adapters)
-    
+            adapters = addNewAdapterToSet(ad[:matchOnly], adapters)
+
     if verbose:
         print('\nAdditions (1)\n')
     newAdapters1 = set()
@@ -57,7 +71,7 @@ def makeAdaptersV2(adapters):
             # Adapter with wrong addition of 1 base
             for l in abc:
                 ad = adapter[:i] + l + adapter[i:]
-                newAdapters1 = addNewAdapterToSet(ad[:ignoreAfter], newAdapters1)
+                newAdapters1 = addNewAdapterToSet(ad[:matchOnly], newAdapters1)
 
     if verbose:
         print('\nRemovals (1)\n')
@@ -66,27 +80,25 @@ def makeAdaptersV2(adapters):
         for i, x in enumerate(adapter):
             # Adapter with wrong removal of 1 base
             ad = adapter[:i] + adapter[i+1:]
-            newAdapters2 = addNewAdapterToSet(ad[:ignoreAfter], newAdapters2)
-    
+            newAdapters2 = addNewAdapterToSet(ad[:matchOnly], newAdapters2)
+
     adapters = adapters.union(newAdapters1).union(newAdapters2)
-    
-    print(len(adapters))
     return adapters
 
 # V1 (~100 adapter variants - faster)
 def makeAdaptersV1(adapters):
-    adapters.add(adapter[:-8])
+    adapters.add(adapter[:matchOnly])
     for i, x in enumerate(adapter):
         for j in abc:
             ad = adapter[:i] + j + adapter[i+1:]
-            adapters.add(ad[:-8])
+            adapters.add(ad[:matchOnly])
             for l in abc:
                 ad = adapter[:i] + l + adapter[i:]
-                adapters.add(ad[:-8])
+                adapters.add(ad[:matchOnly])
             ad = adapter[:i] + adapter[i+1:]
-            adapters.add(ad[:-8])
+            adapters.add(ad[:matchOnly])
             ad = adapter[:i] + adapter[i+2:]
-            adapters.add(ad[:-8])
+            adapters.add(ad[:matchOnly])
     return adapters
 
 def leven(s1, s2):
@@ -105,29 +117,34 @@ def getSubstrings(string,length):
     return subs
 
 if version == 1:
-    adapters = makeAdaptersV1(set())
+    adapters = sorted(makeAdaptersV1(set()))
 else:
-    adapters = makeAdaptersV2(set())
+    adapters = sorted(makeAdaptersV2(set()))
 
-print()
-if trimFirst == 0:
-    print(f'Not trimming any initial bases')
-else:    
-    print(f'Trimming the first {trimFirst} bases')
-print(f'Trimming adapter: {adapter}')
-if version == 2:
-    print(f'Considering only first {ignoreAfter} bases of adapter: {adapter[:ignoreAfter]}')
-print(f'Considering {len(adapters)} possible variants of the adapter')
-print(f'Trimming all bases after the adapter (if present)')
-print(f'Saving to file: {outFilePath}')
-print()
+if not quiet:
+    print()
+    if trimFirst == 0:
+        print(f'Not trimming any initial bases')
+    else:
+        print(f'Trimming the first {trimFirst} bases')
+    print(f'Trimming adapter: {adapter}')
+    if version == 2:
+        print(f'Considering only first {matchOnly} bases of adapter: {adapter[:matchOnly]}')
+    print(f'Considering {len(adapters)} possible variants of the adapter')
+    print(f'Trimming all bases after the adapter (if present)')
+    if trimLast == 0:
+        print(f'Not trimming any other bases after adapter removal')
+    else:
+        print(f'Trimming the last {trimLast} bases after adapter removal')
+    print(f'Saving to file: {outFilePath}')
+    print()
 
 result = ""
 
-with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
+with open(inFilePath, 'r+b') as infile:
     m = mmap.mmap(infile.fileno(), 0, access=mmap.ACCESS_READ)
     length = len(adapter)
-    finalLength = str(51-length)
+    finalLength = str(51-length) # should be set based on first line
     match = None
     isRead = False
     count = 0
@@ -146,7 +163,7 @@ with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
             if match:
                 matches += 1
                 sys.stdout.write(f'\r{count} • {matches}\r')
-                result += prevLine + '\n' + line[trimFirst:match] + '\n'
+                result += f'{prevLine}\n{line[trimFirst:match-trimLast]}\n'
                 #if len(line[:match]) < 10:
                 #    print(adapter)
                 #    print(match)
@@ -157,15 +174,16 @@ with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
                 #print(f'{i:06}. {line[:-1]}')
                 #time.sleep(.3)
         elif i % 2 != 0 and match:
-            result += prevLine + '\n' + line[trimFirst:match] + '\n'
+            result += f'{prevLine}\n{line[trimFirst:match-trimLast]}\n'
             match = None
         else:
             isRead = line[0] == '@'
-            prevLine = line[:-3] + finalLength
-    
-    print(f'Trimmed {count} lines, found {matches} matches\n')
-    
-    # TODO - Fix Levenshtein distance matching        
+            prevLine = line[:-1]# + finalLength
+
+    if not quiet:
+        print(f'Trimmed {count} lines, found {matches} matches\n')
+
+    # TODO - Fix Levenshtein distance matching
     """
     else:
         for j, char in enumerate(line[10:-len(adapter)-1]):
@@ -181,10 +199,10 @@ with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
                 print()
     sys.stdout.write(f'\r{matches}\r')
     """
-    # Used to print matches 
+    # Used to print matches
     #if matches >= 5000:
         #sys.exit()
-        #time.sleep(1) 
+        #time.sleep(1)
         #matches = re.findall('', line)
         #for match in matches:
         #    adapterMatch = line[index:index+len(adapter)]
