@@ -14,12 +14,12 @@ from itertools import product
 
 # TODO - Make options configurable through argparse
 version = 1
-inDirPath = './'
+inDirPath = './data/'
 adapter = 'TGGAATTCTCGGGTGCCAAGG'
 matches = 0
 trimFirst = 4
 ignoreAfter = 10
-outFilePath = './SRR8311267.trimmed.fq'
+outFilePath = './data/SRR8311267.trimmed.fq'
 
 abc = ('A','C','G','T')
 adapters = set()
@@ -105,9 +105,9 @@ def getSubstrings(string,length):
     return subs
 
 if version == 1:
-    adapters = makeAdaptersV1(set())
+    adapters = sorted(makeAdaptersV1(set()))
 else:
-    adapters = makeAdaptersV2(set())
+    adapters = sorted(makeAdaptersV2(set()))
 
 print()
 if trimFirst == 0:
@@ -132,6 +132,8 @@ with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
     isRead = False
     count = 0
     for i, line in enumerate(iter(m.readline, b"")):
+        # if i == 5*4:  # DEBUG
+        #     break
         line = line.decode("utf-8")
         #for i in range(0,len(m)):
         #line = str(m.readline())
@@ -161,7 +163,7 @@ with open(inDirPath + 'SRR8311267.fastq', 'r+b') as infile:
             match = None
         else:
             isRead = line[0] == '@'
-            prevLine = line[:-3] + finalLength
+            prevLine = line[:-1]
     
     print(f'Trimmed {count} lines, found {matches} matches\n')
     
