@@ -16,7 +16,7 @@ from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance as ndl
 from fastqandfurious import fastqandfurious as ff
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-V', '--version', help='algorithm version', default = 3)
+parser.add_argument('-V', '--version', type=int, help='algorithm version', default = 3)
 parser.add_argument('-a', '--adapter', help='adapter to remove', default = 'TGGAATTCTCGGGTGCCAAGG')
 parser.add_argument('-f', '--trim-first', type=int, help='number of initial bases to trim', default = 4)
 parser.add_argument('-l', '--trim-last', type=int, help='number of final bases to trim', default = 4)
@@ -131,6 +131,7 @@ if version == 1:
     adapters = sorted(makeAdaptersV1(set()))
 elif version == 2:
     adapters = sorted(makeAdaptersV2(set()))
+
 def matchAdapters(line, adapters):
     for adapter in adapters:
         if adapter in line:
@@ -140,11 +141,12 @@ def matchAdapters(line, adapters):
 def matchLeven(line, adapter):
     for j, char in enumerate(line[:math.floor(len(line)/stopAfter)]):
         possibleMatch = line[j:j+len(adapter)]
-        #l = leven(adapter, possibleMatch)
-        #dl = dleven(adapter, possibleMatch)
-        ndl = ndleven(adapter, possibleMatch)
-        if ndl <= maxDistance:
-            return -(j+len(adapter))
+        if version == 4:
+            if leven(adapter, possibleMatch) >= .9:
+                return -(j+len(adapter))
+        else:
+            if ndleven(adapter, possibleMatch) <= maxDistance:
+                return -(j+len(adapter))
     return None
 
 
@@ -154,7 +156,7 @@ def analysis(partition):
         line = seq[1].decode('utf-8')
         quality = seq[2].decode('utf-8')
         match = matchLeven(line[::-1], cutAdapter)
-        
+
         if match:
             line = line[trimFirst:match-trimLast]
             quality = quality[trimFirst:match-trimLast]
@@ -260,7 +262,7 @@ def main():
             for p in partition:
                 outFile.write(p)
                 count += 1
-        
+
         if singleQueue:
             for p in range(maxThread):
                 process_queue(out_queue, write_partition)
