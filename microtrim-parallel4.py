@@ -18,41 +18,45 @@ from fastqandfurious import fastqandfurious as ff
 parser = argparse.ArgumentParser()
 parser.add_argument('-V', '--version', help='algorithm version', default = 3)
 parser.add_argument('-a', '--adapter', help='adapter to remove', default = 'TGGAATTCTCGGGTGCCAAGG')
-parser.add_argument('-f', '--trim_first', help='number of initial bases to trim', default = 4)
-parser.add_argument('-l', '--trim_last', help='number of final bases to trim', default = 4)
-parser.add_argument('-T', '--trim_to', help='trim to a specific number of bases', default = 28)
-parser.add_argument('-m', '--match_only', help='match only the first X bases of adapter', default = 15)
-parser.add_argument('-i', '--in_file', help='input file', default = './data/SRR8311267.fastq')
-parser.add_argument('-o', '--out_file', help='output file', default = './trimmed.fq')
+parser.add_argument('-f', '--trim-first', type=int, help='number of initial bases to trim', default = 4)
+parser.add_argument('-l', '--trim-last', type=int, help='number of final bases to trim', default = 4)
+parser.add_argument('-T', '--trim-to', type=int, help='trim to a specific number of bases', default = 28)
+parser.add_argument('-m', '--match-only', help='match only the first X bases of adapter', default = 15)
+parser.add_argument('-i', '--in-file', help='input file', default = './data/SRR8311267.fastq')
+parser.add_argument('-o', '--out-file', help='output file', default = './data/SRR8311267.trimmed.fastq')
 parser.add_argument('-q', '--quiet', help='suppress output', action = 'store_true')
 parser.add_argument('-v', '--verbose', help='print additional information', action = 'store_true')
-parser.add_argument('-d', '--max_distance', help='maximum string distance', default = .1)
-parser.add_argument('-s', '--stop_after', help='stop after 1/X of the string', default = 2)
-parser.add_argument('-t', '--max_threads', help='maximum threads', default = 4)
-parser.add_argument('-c', '--chunks', help='number of chunks', default = 100)
+parser.add_argument('-d', '--max-distance', type=float, help='maximum string distance', default = .1)
+parser.add_argument('-s', '--stop-after', type=int, help='stop after 1/X of the string', default = 2)
+parser.add_argument('-t', '--max-threads', type=int, help='maximum threads', default = 4)
+parser.add_argument('-c', '--chunks', type=int, help='number of chunks', default = 500)
+parser.add_argument('--debug-limit', type=int, help='read only the first N read from the input file', default = -1)
+parser.add_argument('--single-queue', help="use a single output queue instead on numThread queues", action='store_true', default=False)
 args = parser.parse_args()
 
 version = args.version
 adapter = args.adapter
-trimFirst = int(args.trim_first)
-trimLast = int(args.trim_last)
-trimTo = int(args.trim_to) # TODO implement smart trimming
+trimFirst = args.trim_first
+trimLast = args.trim_last
+trimTo = args.trim_to # TODO implement smart trimming
 matchOnly = args.match_only
 inFilePath = args.in_file
 outFilePath = args.out_file
-maxThread = int(args.max_threads)
-chunk = int(args.chunks)
-maxDistance = float(args.max_distance)
-stopAfter = int(args.stop_after)
+maxThread = args.max_threads
+chunk = args.chunks
+maxDistance = args.max_distance
+stopAfter = args.stop_after
 verbose = args.verbose
 quiet = args.quiet
+debugLimit = args.debug_limit
+singleQueue = args.single_queue
 
 abc = ('A', 'C', 'G', 'T')
 adapters = set()
 adLength = len(adapter)
 cutAdapter = adapter[:matchOnly][::-1]
 verbose = False
-
+EOF = 'EOF'
 
 def addNewAdapterToSet(ad, adSet):
     adSet.add(ad)
@@ -123,6 +127,10 @@ def makeAdaptersV1(adapters):
 def leven(s1, s2):
     return Levenshtein.ratio(s1, s2)
 
+if version == 1:
+    adapters = sorted(makeAdaptersV1(set()))
+elif version == 2:
+    adapters = sorted(makeAdaptersV2(set()))
 def matchAdapters(line, adapters):
     for adapter in adapters:
         if adapter in line:
@@ -139,18 +147,6 @@ def matchLeven(line, adapter):
             return -(j+len(adapter))
     return None
 
-# def group_lines(it):
-#     for i, l in enumerate(it):
-#         if i % 4 == 0:
-#             lines = []
-#         lines.append(l.decode('utf-8'))
-#         if i % 4 == 3:
-#             yield lines
-
-if version == 1:
-    adapters = sorted(makeAdaptersV1(set()))
-elif version == 2:
-    adapters = sorted(makeAdaptersV2(set()))
 
 def analysis(partition):
     for i, seq in enumerate(partition):
@@ -166,28 +162,17 @@ def analysis(partition):
         partition[i] = f'@{comment}\n{line}\n+\n{quality}\n'
     return partition
 
-def worker_fun2(q1, q2):
-    print("process start!", os.getpid())
-    partition = q1.get()
-    while partition != "EOF":
-        res = 1
-        for i in range(1000000):
-            res += math.sin(res)
-        # print (f"{os.getpid()} after sin", res)
-        partition = q1.get()
-    q2.put(res)
-    q2.put("EOF")
-    print("quit")
+def process_queue(q, f):
+    partition = q.get()
+    while partition != EOF:
+            f(partition)
+            partition = q.get()
 
 def worker_fun(q1, q2):
     print("process start!", os.getpid())
-    partition = q1.get()
-    while partition != "EOF":
-        partition = analysis(partition)
-        q2.put(partition)
-        partition = q1.get()
-    q2.put("EOF")
-    print("quit")
+    process_queue(q1, lambda p: q2.put(analysis(p)))
+    q2.put(EOF)
+    print("quit!", os.getpid())
 
 def main():
     print()
@@ -224,51 +209,66 @@ def main():
 
     process = [None] * maxThread
     queues1 = [None] * maxThread
-    queues2 = [None] * maxThread
+    if singleQueue:
+        out_queue = Queue()
+    else:
+        queues2 = [None] * maxThread
     for i in range(maxThread):
         queues1[i] = Queue()
-        queues2[i] = Queue()
-        process[i] = Process(target=worker_fun, args=(queues1[i], queues2[i]))
+        if not singleQueue:
+            queues2[i] = Queue()
+            out_queue = queues2[i]
+        process[i] = Process(target=worker_fun, args=(queues1[i], out_queue))
         process[i].start()
 
     with open(inFilePath, 'r+b') as infile:
         #m = mmap.mmap(infile.fileno(), 0, access=mmap.ACCESS_READ)
         # m = infile
 
-        n_lines = 4
-        size = chunk * n_lines
-        count = 0
         t = 0
-
-        for i, seq in enumerate(ff.readfastq_iter(infile, 20000000, ff.entryfunc)):
-            # if i == 1000*4:
-            #     break
-            p = count % size
+        # TODO: find the optimal size of the buffer "fbufsize"
+        for i, seq in enumerate(ff.readfastq_iter(infile, fbufsize=20000000)):
+            p = i % chunk
             if p == 0:
-                partition = [None] * size
+                partition = [None] * chunk
+
+            if i == debugLimit:
+                if p != 0:
+                    partition = partition[:p]
+                    queues1[t].put(partition)
+                break
 
             partition[p] = seq
 
-            if p == size - 1:
+            if p == chunk - 1:
                 # print("put element")
                 # print(f"send to {t}")
                 queues1[t].put(partition)
                 t = (t + 1) % maxThread
-            count+=1
+
+        print(f"Sent {i} elements")
 
     for q in queues1:
-        q.put("EOF")
+        q.put(EOF)
+
 
     print("wait results")
     with open(outFilePath, 'w') as outFile:
-        p_end = maxThread
-        for q in queues2:
-            lines = q.get()
-            while lines != 'EOF':
-                outFile.write(''.join(lines))
-                lines = q.get()
-        print("received", lines)
+        count = 0
+        def write_partition(partition):
+            nonlocal count
+            for p in partition:
+                outFile.write(p)
+                count += 1
+        
+        if singleQueue:
+            for p in range(maxThread):
+                process_queue(out_queue, write_partition)
+        else:
+            for q in queues2:
+                process_queue(q, write_partition)
 
+    print(f"received {count} elements")
     print("wait process")
     for p in process:
         p.join()
