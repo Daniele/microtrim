@@ -149,6 +149,8 @@ with open(inFilePath, 'r+b') as infile:
     isRead = False
     count = 0
     for i, line in enumerate(iter(m.readline, b"")):
+        # if i == 5*4:  # DEBUG
+        #     break
         line = line.decode("utf-8")
         #for i in range(0,len(m)):
         #line = str(m.readline())
