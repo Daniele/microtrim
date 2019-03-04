@@ -171,10 +171,8 @@ def process_queue(q, f):
             partition = q.get()
 
 def worker_fun(q1, q2):
-    print("process start!", os.getpid())
     process_queue(q1, lambda p: q2.put(analysis(p)))
     q2.put(EOF)
-    print("quit!", os.getpid())
 
 def main():
     print()
