@@ -17,21 +17,25 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-V', '--version', help='algorithm version', default = 1)
 parser.add_argument('-a', '--adapter', help='adapter to remove', default = 'TGGAATTCTCGGGTGCCAAGG')
 parser.add_argument('-f', '--trim_first', help='number of initial bases to trim', default = 4)
-parser.add_argument('-l', '--trim_last', help='number of final bases to trim', default = 0)
+parser.add_argument('-l', '--trim_last', help='number of final bases to trim', default = 4)
+parser.add_argument('-T', '--trim_to', help='trim to a specific number of bases', default = 28)
 parser.add_argument('-m', '--match_only', help='match only the first X bases of adapter', default = 15)
-parser.add_argument('-i', '--in_file', help='input file', default = './SRR8311267.fastq')
+parser.add_argument('-i', '--in_file', help='input file', default = './data/SRR8311267.fastq')
 parser.add_argument('-o', '--out_file', help='output file', default = './trimmed.fq')
 parser.add_argument('-q', '--quiet', help='suppress output', action = 'store_true')
 parser.add_argument('-v', '--verbose', help='print additional information', action = 'store_true')
+parser.add_argument('-d', '--max_distance', help='maximum string distance', default = .05)
 args = parser.parse_args()
 
 version = args.version
 adapter = args.adapter
 trimFirst = args.trim_first
 trimLast = args.trim_last
+trimTo = args.trim_to # TODO implement smart trimming
 matchOnly = args.match_only
 inFilePath = args.in_file
 outFilePath = args.out_file
+maxDistance = args.max_distance
 verbose = args.verbose
 quiet = args.quiet
 
@@ -39,13 +43,14 @@ matches = 0
 abc = ('A','C','G','T')
 adapters = set()
 adLength = len(adapter)
-cutAdapter = adapter[:matchOnly]
+#cutAdapter = adapter[:matchOnly]
+cutAdapter = adapter[::-1]
 
 def addNewAdapterToSet(ad, adSet):
     adSet.add(ad)
     if verbose:
         print(f'Adding {ad}')
-        time.sleep(.05)
+        time.sleep(maxDistance)
     return adSet
 
 # V2 (~1000 adapter variants - slower)
@@ -110,6 +115,20 @@ def matchAdapters(line, adapters):
             return line.find(adapter)
     return None
 
+def matchLeven(line, adapter):
+    for j, char in enumerate(line[:int(len(line)/2)]):
+        possibleMatch = line[j:j+len(adapter)]
+        #l = leven(adapter, possibleMatch)
+        #dl = dleven(adapter, possibleMatch)
+        ndl = ndleven(adapter, possibleMatch)
+        if ndl < .05:
+            #if verbose:
+            #   print(f'{i}. {adapter}')
+            #   print(f'{i}. {possibleMatch} • {ndl}')
+            #   print()
+            return -(j+len(adapter))
+    return None
+
 def getSubstrings(string,length):
     subs = set()
     for j in string[10:-length-1]:
@@ -149,6 +168,8 @@ with open(inFilePath, 'r+b') as infile:
     isRead = False
     count = 0
     for i, line in enumerate(iter(m.readline, b"")):
+        if (i == 13):
+            print(line[::-1], cutAdapter)
         # if i == 5*4:  # DEBUG
         #     break
         line = line.decode("utf-8")
@@ -161,20 +182,22 @@ with open(inFilePath, 'r+b') as infile:
         #continue
         if isRead and (i+3) % 4 == 0:
             count += 1
-            match = matchAdapters(line, adapters)
+            #match = matchAdapters(line, adapters)
+            match = matchLeven(line[::-1], cutAdapter)
             if match:
                 matches += 1
-                sys.stdout.write(f'\r{count} • {matches}\r')
                 result += f'{prevLine}\n{line[trimFirst:match-trimLast]}\n'
+                if not quiet:
+                    sys.stdout.write(f'\r{count} • {matches}\r')
                 #if len(line[:match]) < 10:
                 #    print(adapter)
                 #    print(match)
                 #    print(line)
                 #    time.sleep(.3)
-            #else:
+            elif verbose:
                 # Print unmatched sequences
-                #print(f'{i:06}. {line[:-1]}')
-                #time.sleep(.3)
+                print(f'{i:06}. {line[:-1]}')
+                #time.sleep(.1)
         elif i % 2 != 0 and match:
             result += f'{prevLine}\n{line[trimFirst:match-trimLast]}\n'
             match = None
@@ -184,34 +207,6 @@ with open(inFilePath, 'r+b') as infile:
 
     if not quiet:
         print(f'Trimmed {count} lines, found {matches} matches\n')
-
-    # TODO - Fix Levenshtein distance matching
-    """
-    else:
-        for j, char in enumerate(line[10:-len(adapter)-1]):
-            possibleMatch = line[j:j+len(adapter)-1]
-            #l = leven(adapter, possibleMatch)
-            #dl = dleven(adapter, possibleMatch)
-            ndl = ndleven(adapter, possibleMatch)
-            if ndl < .1:
-                matches += 1
-                continue
-                print(f'{i}. {adapter}')
-                print(f'{i}. {possibleMatch} • {l} • {dl} • {ndl}')
-                print()
-    sys.stdout.write(f'\r{matches}\r')
-    """
-    # Used to print matches
-    #if matches >= 5000:
-        #sys.exit()
-        #time.sleep(1)
-        #matches = re.findall('', line)
-        #for match in matches:
-        #    adapterMatch = line[index:index+len(adapter)]
-        #    print(adapterMatch)
-        #    print(leven(adapter, adapterMatch))
-        #    print()
-        #    time.sleep(1)
 
 with open(outFilePath, 'w') as outFile:
     outFile.write(result)
