@@ -13,19 +13,20 @@ from multiprocessing import Process, Queue
 
 from fastqandfurious import fastqandfurious as ff
 
-from matcher import adaptergen, adaptergen_faster, leven, ndleven
+from matcher import adaptergen, adaptergen_faster, leven, ndleven, ssw
 
 MATCHER_BUILDER = {
     'adagen': adaptergen.build,
     'adagen-fast': adaptergen_faster.build,
     'leven': leven.build,
-    'ndleven': ndleven.build
+    'ndleven': ndleven.build,
+    'ssw': ssw.build
 }
 EOF = 'EOF'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-m', '--matcher', help='the matcher to use [adagen, adagen-fast, leven, ndleven]',
-                    choices=['adagen', 'adagen-fast', 'leven', 'ndleven'], required=True)
+parser.add_argument('-m', '--matcher', help='the matcher to use [adagen, adagen-fast, leven, ndleven, ssw]',
+                    choices=['adagen', 'adagen-fast', 'leven', 'ndleven', 'ssw'], required=True)
 parser.add_argument('-a', '--adapter', help='adapter to remove',
                     default='TGGAATTCTCGGGTGCCAAGG')
 parser.add_argument('--trim-first', type=int,
@@ -41,7 +42,7 @@ parser.add_argument('-i', '--in-file', help='input file',
                     default='./data/SRR8311267.fastq')
 parser.add_argument('-o', '--out-file', help='output file',
                     default='./data/SRR8311267.trimmed.fastq')
-# TODO: implement quite and verbose
+# TODO: implement quiet and verbose
 # parser.add_argument('-q', '--quiet', help='suppress output',
 #                     action='store_true')
 # parser.add_argument('-v', '--verbose',
@@ -49,7 +50,7 @@ parser.add_argument('-o', '--out-file', help='output file',
 parser.add_argument('--max-distance', type=float,
                     help='maximum string distance (used only in ndleven)', default=.1)
 parser.add_argument('--stop-after', type=int,
-                    help='stop after 1/X of the string (use only in leven and ndleven)', default=2)
+                    help='stop after 1/X of the string (used only in leven and ndleven)', default=2)
 parser.add_argument('--workers', type=int,
                     help='number of parallel workers', default=4)
 parser.add_argument('--chunk', type=int,
@@ -80,7 +81,7 @@ def trim_partiton(partition, trimFirst, trimLast, match_fun):
         quality = seq[2].decode('utf-8')
         match = match_fun(line)
 
-        # TODO: maybe if there is no match we have to throw await the line
+        # TODO: maybe if there is no match we have to throw away the line
         if match:
             line = line[trimFirst:match-trimLast]
             quality = quality[trimFirst:match-trimLast]
