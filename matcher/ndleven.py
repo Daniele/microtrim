@@ -11,8 +11,9 @@ def build(adapter, args):
     adapter = adapter[:args.match_only][::-1]
 
     def match(line):
-        for j, char in enumerate(line[:math.floor(len(line)/args.stop_after)]):
-            possibleMatch = line[j:j+len(adapter)]
+        rline = line[::-1]
+        for j, char in enumerate(rline[:math.floor(len(rline)/args.stop_after)]):
+            possibleMatch = rline[j:j+len(adapter)]
             if ndleven(adapter, possibleMatch) <= args.max_distance:
                 return -(j+len(adapter))
 

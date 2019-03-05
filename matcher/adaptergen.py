@@ -55,7 +55,7 @@ def makeAdapters(adapter, matchOnly):
 
 
 def build(adapter, args):
-    adapter = adapter[:args.match_only][::-1]
+    adapter = adapter[:args.match_only]
     adapters = sorted(makeAdapters(adapter, args.match_only))
 
     def match(line):

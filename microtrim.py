@@ -78,7 +78,7 @@ def trim_partiton(partition, trimFirst, trimLast, match_fun):
         comment = seq[0].decode('utf-8')
         line = seq[1].decode('utf-8')
         quality = seq[2].decode('utf-8')
-        match = match_fun(line[::-1])
+        match = match_fun(line)
 
         # TODO: maybe if there is no match we have to throw await the line
         if match:
