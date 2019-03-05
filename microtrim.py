@@ -13,10 +13,7 @@ from multiprocessing import Process, Queue
 
 from fastqandfurious import fastqandfurious as ff
 
-from matcher import adaptergen
-from matcher import adaptergen_faster
-from matcher import leven
-from matcher import ndleven
+from matcher import adaptergen, adaptergen_faster, leven, ndleven
 
 MATCHER_BUILDER = {
     'adagen': adaptergen.build,
@@ -111,7 +108,6 @@ def main():
     chunk = args.chunk
     debugLimit = args.debug_limit
     singleQueue = args.single_queue
-    cutAdapter = adapter[:matchOnly][::-1]
 
     print()
     if trimFirst == 0:
@@ -121,7 +117,7 @@ def main():
     print(f'Trimming adapter: {adapter}')
     # if version == 2:
     print(f'The matcher \'{matcher_name}\' is used to find the adapter')
-    print(f'Considering only first {matchOnly} bases of adapter: {adapter[:matchOnly]}')
+    # print(f'Considering only first {matchOnly} bases of adapter: {adapter[:matchOnly]}')
     # if version < 3:
     #     print(f'Considering {len(adapters)} possible variants of the adapter')
     # else:
@@ -138,7 +134,7 @@ def main():
 
     # get the matcher function
     matcher_builder = MATCHER_BUILDER[matcher_name]
-    matcher = matcher_builder(cutAdapter, args)
+    matcher = matcher_builder(adapter, args)
 
     # build the parallel topology
     process = [None] * maxThread
