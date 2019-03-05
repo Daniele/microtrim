@@ -23,7 +23,7 @@ def get_time(command, times=5):
     return avg, std, vmin, vmax
 
 
-MAX_THREADS = 23
+MAX_THREADS = 24
 CMD = '''taskset -c 0-{0[worker]} python microtrim-parallel4.py \\
          --max-threads={0[worker]} --chunks={0[chunks]} -V={0[version]} \\
          > /dev/null
