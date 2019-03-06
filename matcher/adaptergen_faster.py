@@ -1,5 +1,5 @@
 '''
-Adapter matcher
+Faster brute-force adapter matcher
 '''
 import time
 
@@ -31,7 +31,10 @@ def makeAdapters(adapter):
     return adapters
 
 
-def build(adapter, args):
+def build(adapter, _):
+    '''
+    Build a brute force adapter macher with no parameters
+    '''
     adapters = sorted(makeAdapters(adapter))
 
     def match(line):

@@ -1,5 +1,5 @@
 '''
-Leven matcher
+Levenshtein matcher
 '''
 import math
 
@@ -7,6 +7,11 @@ import Levenshtein
 
 
 def build(adapter, args):
+    '''
+    Build a Levenshtein matcher with parameters:
+      - match_only
+      - stop_after
+    '''
     adapter = adapter[:args.match_only][::-1]
 
     def match(line):
