@@ -24,23 +24,31 @@ def get_time(command, times=5):
 
 
 MAX_THREADS = 24
-CMD = '''taskset -c 0-{0[worker]} python microtrim-parallel4.py \\
-         --max-threads={0[worker]} --chunks={0[chunks]} -V={0[version]} \\
+# CMD = '''taskset -c 0-{0[worker]} python microtrim-parallel4.py \\
+#          --max-threads={0[worker]} --chunks={0[chunks]} -V={0[version]} \\
+#          > /dev/null
+# '''
+CMD = '''python microtrim.py --matcher={0[matcher]} \\
+         --worker={0[worker]} --chunk={0[chunks]} \\
          > /dev/null
 '''
-WORKER = range(1, MAX_THREADS + 1)
+WORKER = range(2, MAX_THREADS + 1)
 CHUNKS = [1000]
+MATCHER = ['ndleven']
+# MATCHER = ['adagen', 'adagen-fast', 'leven', 'ndleven', 'ssw']
+
 
 def get_cmd(values):
     return CMD.format(values)
 
-print('version', 'worker', 'chunk', 'time (ms)', 'time (s)')
 
-for c, w in product(CHUNKS, WORKER):
+print('matcher', 'worker', 'chunk', 'time (ms)', 'time (s)')
+
+for c, w, m in product(CHUNKS, WORKER, MATCHER):
     di = {'worker': w,
           'chunks': c,
-          'version': 3}
+          'matcher': m}
     cmd = get_cmd(di)
     # print(cmd)
     avg, std, vmin, vmax = get_time(cmd, times=3)
-    print(di['version'], di['worker'], di['chunks'], avg, avg/1000.0)
+    print(di['matcher'], di['worker'], di['chunks'], avg, avg/1000.0)
