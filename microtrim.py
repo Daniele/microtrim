@@ -81,7 +81,6 @@ def trim_partiton(partition, trimFirst, trimLast, match_fun):
         quality = seq[2].decode('utf-8')
         match = match_fun(line)
 
-        # TODO: maybe if there is no match we have to throw away the line
         if match:
             line = line[trimFirst:match-trimLast]
             quality = quality[trimFirst:match-trimLast]
@@ -156,7 +155,7 @@ def main():
     # start file read
     with open(inFilePath, 'r+b') as infile:
         t = 0
-        # TODO: find the optimal size of the buffer "fbufsize"
+        # TODO: find the optimal size of the buffer "fbufsize" and "chunk"
         for i, seq in enumerate(ff.readfastq_iter(infile, fbufsize=20000000)):
             p = i % chunk
             if p == 0:
