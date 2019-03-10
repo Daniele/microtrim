@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import time
+from subprocess import PIPE, run
 from multiprocessing import Process, Queue
 
 from fastqandfurious import fastqandfurious as ff
@@ -27,6 +28,10 @@ EOF = 'EOF'
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', '--matcher', help='the matcher to use [adagen, adagen-fast, leven, ndleven, ssw]',
                     choices=['adagen', 'adagen-fast', 'leven', 'ndleven', 'ssw'], required=True)
+parser.add_argument('--aligner', help="select the aligner [bowtie, htsec]",
+                    choices=['bowtie', 'htsec'])
+parser.add_argument('--index', help="Specified the index file",
+                    default="data/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.bowtie_index")
 parser.add_argument('-a', '--adapter', help='adapter to remove',
                     default='TGGAATTCTCGGGTGCCAAGG')
 parser.add_argument('--trim-first', type=int,
@@ -95,6 +100,18 @@ def worker_fun(q1, q2, trimFirst, trimLast, match_fun):
     q2.put(EOF)
 
 
+def parse_bowtie2(out):
+    # TODO: extract worning
+    for line in out.stderr.decode('utf-8').split('\n'):
+        m = re.search('\(([0-9.]*)%\) aligned 0 times', line)
+        if m:
+            no_aligned = float(m.group(1))
+        m = re.search('([0-9.]*)% overall alignment rate', line)
+        if m:
+            aligned = float(m.group(1))
+    return aligned, no_aligned
+
+
 def main():
     args = parser.parse_args()
     matcher_name = args.matcher
@@ -153,6 +170,7 @@ def main():
         process[i].start()
 
     # start file read
+    t_start = time.perf_counter() * 1000
     with open(inFilePath, 'r+b') as infile:
         t = 0
         # TODO: find the optimal size of the buffer "fbufsize" and "chunk"
@@ -199,6 +217,36 @@ def main():
     print("Wait process")
     for p in process:
         p.join()
+    t_end = time.perf_counter() * 1000
+    time_match = math.floor(t_end - t_start)
+
+    # Align results
+    if args.aligner == 'bowtie':
+        cmd = "bowtie2 -x {} {} -S /tmp/eg2.sam -p {}"\
+            "".format(args.index, args.out_file, args.workers)
+        t_start = time.perf_counter() * 1000
+        out = run(cmd, check=True, stdout=PIPE, stderr=PIPE, shell=True)
+        t_end = time.perf_counter() * 1000
+
+        time_align = math.floor(t_end - t_start)
+        alined , not_aligned = parse_bowtie2(out)
+        ignored = 0
+
+
+    if args.aligner == 'htsec':
+        time_align = 0
+        alined = 0
+        ignored = 0
+        not_aligned = 0
+
+    # Print results
+    print()
+    print(f"time_match:{time_match}")
+    if args.aligner:
+        print(f"time_align:{time_align}")
+        print(f"alined:{alined}")
+        print(f"ignored:{ignored}")
+        print(f"not_aligned:{not_aligned}")
 
 
 if __name__ == "__main__":
