@@ -4,7 +4,7 @@ Striped Smith-Waterman matcher
 
 import math
 
-from skbio.alignment import StripedSmithWaterman as ssw
+from ssw import SSW
 
 
 def build(adapter, args):
@@ -16,11 +16,13 @@ def build(adapter, args):
 
     def match(line):
         rline = line[::-1]
-        target = ssw(rline, match_score=1)
-        match = target(adapter)
-        align = match['optimal_alignment_score']/len(adapter)
-        if align >= .8:
-            return -(match['query_begin']+len(adapter))
+        matcher = SSW(1)
+        matcher.setRead(adapter)
+        matcher.setReference(rline)
+        align = matcher.align()
+                
+        if align.optimal_score/len(adapter) >= .8:
+            return -(align.reference_start+len(adapter))
         return None
 
     return match
