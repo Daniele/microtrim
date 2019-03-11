@@ -1,5 +1,7 @@
 fastq-and-furious==0.2.0
+HTSeq==0.11.2
 numpy==1.16.2
+pysam==0.15.2
 python-Levenshtein==0.12.0
 pyxDamerauLevenshtein==1.5.3
 ssw-py==0.2.6

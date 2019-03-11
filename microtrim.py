@@ -4,6 +4,7 @@
 import argparse
 import math
 import re
+import csv
 import time
 from subprocess import PIPE, run
 from multiprocessing import Process, Queue
@@ -30,12 +31,27 @@ parser.add_argument(
     required=True,
 )
 parser.add_argument(
-    "--aligner", help="select the aligner [bowtie, htsec]", choices=["bowtie", "htsec"]
+    "--aligner", help="select the aligner [bowtie, bowtie_htseq]", choices=["bowtie", "bowtie_htseq"]
 )
 parser.add_argument(
     "--index",
-    help="Specified the index file",
+    help="specify the index file",
     default="data/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.bowtie_index",
+)
+parser.add_argument(
+    "--sam",
+    help="specify the sam file",
+    default="data/eg2.sam",
+)
+parser.add_argument(
+    "--gff",
+    help="specify the gff file",
+    default="data/hsa.gff3",
+)
+parser.add_argument(
+    "--count",
+    help="specify the htseq count file",
+    default="data/count.tsv",
 )
 parser.add_argument(
     "-a", "--adapter", help="adapter to remove", default="TGGAATTCTCGGGTGCCAAGG"
@@ -53,10 +69,10 @@ parser.add_argument(
     "--match-only", help="match only the first X bases of adapter", default=15
 )
 parser.add_argument(
-    "-i", "--in-file", help="input file", default="./data/SRR8311267.fastq"
+    "-i", "--in-file", help="input file", default="data/SRR8311267.fastq"
 )
 parser.add_argument(
-    "-o", "--out-file", help="output file", default="./data/SRR8311267.trimmed.fastq"
+    "-o", "--out-file", help="output file", default="data/SRR8311267.trimmed.fastq"
 )
 # TODO: implement quiet and verbose
 # parser.add_argument('-q', '--quiet', help='suppress output',
@@ -132,13 +148,26 @@ def parse_bowtie2(out):
     for line in out.stderr.decode("utf-8").split("\n"):
         m1 = re.search(r"\(([0-9.]*)%\) aligned 0 times", line)
         if m1:
-            no_aligned = float(m1.group(1))
+            not_aligned = float(m1.group(1))
         m2 = re.search(r"([0-9.]*)% overall alignment rate", line)
         if m2:
             aligned = float(m2.group(1))
         if "Warning: skipping read" in line:
             ignored += 1
-    return aligned, no_aligned, ignored
+    return aligned, not_aligned, ignored
+
+
+def parse_htseq(count_file):
+    ignored = 0
+    with open(count_file, 'r') as tsvfile:
+        reader = csv.reader(tsvfile, delimiter='\t')
+        values = [int(row[1]) for row in reader]
+        aligned = sum(values[:-5])
+        bad_aligned = sum(values[-5:-2])
+        not_aligned = values[-2]
+        not_unique = values[-1] # not needed for total
+        total = aligned + bad_aligned + not_aligned
+    return 100*aligned/total, 100*bad_aligned/total, 100*not_aligned/total
 
 
 def main():
@@ -249,38 +278,53 @@ def main():
         p.join()
     t_end = time.perf_counter() * 1000
     time_match = math.floor(t_end - t_start)
+    
+    print(f"Matching time: {time_match}")
 
     # Align results
     if args.aligner:
         print("Start alignment")
 
-    if args.aligner == "bowtie":
-        cmd = "bowtie2 -x {} {} -S /tmp/eg2.sam -p {}" "".format(
-            args.index, args.out_file, args.workers
+    if args.aligner in ("bowtie", "bowtie_htseq"):
+        cmd = "bowtie2 -x {} {} -S {} -p {}" "".format(
+            args.index, args.out_file, args.sam, args.workers
         )
         t_start = time.perf_counter() * 1000
         out = run(cmd, check=True, stdout=PIPE, stderr=PIPE, shell=True)
         t_end = time.perf_counter() * 1000
 
         time_align = math.floor(t_end - t_start)
-        alined, not_aligned, ignored = parse_bowtie2(out)
+        aligned, not_aligned, ignored = parse_bowtie2(out)
+        ignored = ignored / count * 100.0
+        
+        # Print results
+        print()
+        print("Bowtie alignment")
+        print(f"- Alignment time: {time_align}")
+        print(f"- Aligned: {aligned:2.2f}%")
+        print(f"- Ignored: {ignored:2.2f}%")
+        print(f"- Not aligned: {not_aligned:2.2f}%")
+
+    if args.aligner == "bowtie_htseq":
+        cmd = "python3 -m HTSeq.scripts.count -t miRNA -i Name {} {} > {}".format(
+            args.sam, args.gff, args.count
+        )
+        t_start = time.perf_counter() * 1000
+        out = run(cmd, check=True, stdout=PIPE, stderr=PIPE, shell=True)
+        t_end = time.perf_counter() * 1000
+
+        time_align = math.floor(t_end - t_start)
+        aligned, bad_aligned, not_aligned = parse_htseq(args.count)
         ignored = ignored / count * 100.0
 
-    if args.aligner == "htsec":
-        time_align = 0
-        alined = 0
-        ignored = 0
-        not_aligned = 0
-
-    # Print results
-    print()
-    print(f"time_match:{time_match}")
-    if args.aligner:
-        print(f"time_align:{time_align}")
-        print(f"alined:{alined:2.2f}")
-        print(f"ignored:{ignored:2.2f}")
-        print(f"not_aligned:{not_aligned:2.2f}")
-
+        # Print results
+        print()
+        print("HTSeq alignment")
+        print(f"- Alignment time: {time_align}")
+        print(f"- Aligned: {aligned:2.2f}%")
+        print(f"- Badly aligned: {bad_aligned:2.2f}%")
+        print(f"- Not aligned: {not_aligned:2.2f}%")
+        print()
 
 if __name__ == "__main__":
     main()
