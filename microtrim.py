@@ -62,11 +62,11 @@ parser.add_argument(
 parser.add_argument(
     "--trim-last", type=int, help="number of final bases to trim", default=4
 )
-# TODO: implement smart trimming
-# parser.add_argument('--trim-to', type=int,
-#                     help='trim to a specific number of bases', default=28)
 parser.add_argument(
-    "--match-only", help="match only the first X bases of adapter", default=15
+    "--trim-to", type=int, help="number of final bases to trim", default=23
+)
+parser.add_argument(
+    "--match-only", type=int, help="match only the first X bases of adapter", default=15
 )
 parser.add_argument(
     "-i", "--in-file", help="input file", default="data/SRR8311267.fastq"
@@ -119,7 +119,7 @@ def process_queue(q, f):
         partition = q.get()
 
 
-def trim_partiton(partition, trimFirst, trimLast, match_fun):
+def trim_partition(partition, trimFirst, trimLast, trimTo, match_fun):
     """
     Trim a partition of lines with the passed match fun
     """
@@ -128,18 +128,37 @@ def trim_partiton(partition, trimFirst, trimLast, match_fun):
         line = seq[1].decode("utf-8")
         quality = seq[2].decode("utf-8")
         match = match_fun(line)
+        tFirst = 0
+        tLast = 0
+        count = 0
+
+        if trimTo and match:
+            lineLen = len(line[:match])
+            while lineLen > trimTo:
+                if count % 2:
+                    tFirst += 1
+                else:
+                    tLast += 1
+                count += 1
+                lineLen -= 1
+
+        tFirst = max(tFirst, trimFirst)
+        tLast = max(tLast, trimLast)
 
         if match:
-            line = line[trimFirst : match - trimLast]
-            quality = quality[trimFirst : match - trimLast]
+            line = line[tFirst : match - tLast]
+            quality = quality[tFirst : match - tLast]
+        else:
+            line = line[tFirst : tFirst + trimTo]
+            quality = quality[tFirst : tFirst + trimTo]
 
         partition[i] = f"@{comment}\n{line}\n+\n{quality}\n"
     return partition
 
 
-def worker_fun(q1, q2, trimFirst, trimLast, match_fun):
+def worker_fun(q1, q2, trimFirst, trimLast, trimTo, match_fun):
     for p in iter(q1.get, EOF):
-        q2.put(trim_partiton(p, trimFirst, trimLast, match_fun))
+        q2.put(trim_partition(p, trimFirst, trimLast, trimTo, match_fun))
     q2.put(EOF)
 
 
@@ -176,6 +195,7 @@ def main():
     adapter = args.adapter
     trimFirst = args.trim_first
     trimLast = args.trim_last
+    trimTo = args.trim_to
     inFilePath = args.in_file
     outFilePath = args.out_file
     maxThread = args.workers
@@ -224,7 +244,7 @@ def main():
             out_queue = queues2[i]
         process[i] = Process(
             target=worker_fun,
-            args=(queues1[i], out_queue, trimFirst, trimLast, matcher),
+            args=(queues1[i], out_queue, trimFirst, trimLast, trimTo, matcher),
         )
         process[i].start()
 
