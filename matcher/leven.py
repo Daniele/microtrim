@@ -18,7 +18,7 @@ def build(adapter, args):
         rline = line[::-1]
         for j, char in enumerate(rline[:math.floor(len(rline)/args.stop_after)]):
             possibleMatch = rline[j:j+len(adapter)]
-            if Levenshtein.ratio(adapter, possibleMatch) >= .9:
+            if Levenshtein.ratio(adapter, possibleMatch) >= 1-args.max_distance:
                 return -(j+len(adapter))
 
     return match
