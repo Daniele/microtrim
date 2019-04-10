@@ -57,10 +57,10 @@ parser.add_argument(
     "-a", "--adapter", help="adapter to remove", default="TGGAATTCTCGGGTGCCAAGG"
 )
 parser.add_argument(
-    "--trim-first", type=int, help="number of initial bases to trim", default=4
+    "--trim-first", type=int, help="number of initial bases to trim", default=0
 )
 parser.add_argument(
-    "--trim-last", type=int, help="number of final bases to trim", default=4
+    "--trim-last", type=int, help="number of final bases to trim", default=0
 )
 parser.add_argument(
     "--trim-to", type=int, help="number of final bases to trim", default=23
