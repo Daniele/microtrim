@@ -10,6 +10,7 @@ from subprocess import PIPE, run
 from multiprocessing import Process, Queue
 
 from fastqandfurious import fastqandfurious as ff
+from fastqandfurious._fastqandfurious import entrypos as entrypos_c
 
 from matcher import adaptergen, adaptergen_faster, leven, ndleven, ssw
 
@@ -31,27 +32,19 @@ parser.add_argument(
     required=True,
 )
 parser.add_argument(
-    "--aligner", help="select the aligner [bowtie, bowtie_htseq]", choices=["bowtie", "bowtie_htseq"]
+    "--aligner",
+    help="select the aligner [bowtie, bowtie_htseq]",
+    choices=["bowtie", "bowtie_htseq"],
 )
 parser.add_argument(
     "--index",
     help="specify the index file",
     default="data/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.bowtie_index",
 )
+parser.add_argument("--sam", help="specify the sam file", default="data/eg2.sam")
+parser.add_argument("--gff", help="specify the gff file", default="data/hsa.gff3")
 parser.add_argument(
-    "--sam",
-    help="specify the sam file",
-    default="data/eg2.sam",
-)
-parser.add_argument(
-    "--gff",
-    help="specify the gff file",
-    default="data/hsa.gff3",
-)
-parser.add_argument(
-    "--count",
-    help="specify the htseq count file",
-    default="data/count.tsv",
+    "--count", help="specify the htseq count file", default="data/count.tsv"
 )
 parser.add_argument(
     "-a", "--adapter", help="adapter to remove", default="TGGAATTCTCGGGTGCCAAGG"
@@ -178,15 +171,15 @@ def parse_bowtie2(out):
 
 def parse_htseq(count_file):
     ignored = 0
-    with open(count_file, 'r') as tsvfile:
-        reader = csv.reader(tsvfile, delimiter='\t')
+    with open(count_file, "r") as tsvfile:
+        reader = csv.reader(tsvfile, delimiter="\t")
         values = [int(row[1]) for row in reader]
         aligned = sum(values[:-5])
         bad_aligned = sum(values[-5:-2])
         not_aligned = values[-2]
-        not_unique = values[-1] # not needed for total
+        not_unique = values[-1]  # not needed for total
         total = aligned + bad_aligned + not_aligned
-    return 100*aligned/total, 100*bad_aligned/total, 100*not_aligned/total
+    return 100 * aligned / total, 100 * bad_aligned / total, 100 * not_aligned / total
 
 
 def main():
@@ -222,84 +215,125 @@ def main():
     else:
         print(f"Trimming the last {trimLast} bases after adapter removal")
     print(f"Saving to file: {outFilePath}")
-    # TODO is maxThreads is 0 use the sequential version of the code
-    print(f"Used {maxThread} workers")
+    print("Used", f"{maxThread} workers" if maxThread > 0 else "sequential version")
     print()
 
     # get the matcher function
     matcher_builder = MATCHER_BUILDER[matcher_name]
     matcher = matcher_builder(adapter, args)
 
-    # build the parallel topology
-    process = [None] * maxThread
-    queues1 = [None] * maxThread
-    if singleQueue:
-        out_queue = Queue()
-    else:
-        queues2 = [None] * maxThread
-    for i in range(maxThread):
-        queues1[i] = Queue()
-        if not singleQueue:
-            queues2[i] = Queue()
-            out_queue = queues2[i]
-        process[i] = Process(
-            target=worker_fun,
-            args=(queues1[i], out_queue, trimFirst, trimLast, trimTo, matcher),
-        )
-        process[i].start()
-
-    # start file read
-    t_start = time.perf_counter() * 1000
-    with open(inFilePath, "r+b") as infile:
-        t = 0
-        # TODO: find the optimal size of the buffer "fbufsize" and "chunk"
-        for i, seq in enumerate(ff.readfastq_iter(infile, fbufsize=20_000_000)):
-            p = i % chunk
-            if p == 0:
-                partition = [None] * chunk
-
-            if i == debugLimit:
-                break
-
-            partition[p] = seq
-
-            if p == chunk - 1:
-                queues1[t].put(partition)
-                t = (t + 1) % maxThread
-        if p < chunk - 1:
-            partition = partition[:p]
-            queues1[t].put(partition)
-
-    print(f"Sent {i} elements to the workers")
-
-    for q in queues1:
-        q.put(EOF)
-
-    print("Wait results")
-    with open(outFilePath, "w") as outFile:
-        count = 0
-
-        def write_partition(partition):
-            nonlocal count
-            for p in partition:
-                outFile.write(p)
-                count += 1
-
+    if maxThread > 0:
+        # build the parallel topology
+        process = [None] * maxThread
+        queues1 = [None] * maxThread
         if singleQueue:
-            for p in range(maxThread):
-                process_queue(out_queue, write_partition)
+            out_queue = Queue()
         else:
-            for q in queues2:
-                process_queue(q, write_partition)
+            queues2 = [None] * maxThread
+        for i in range(maxThread):
+            queues1[i] = Queue()
+            if not singleQueue:
+                queues2[i] = Queue()
+                out_queue = queues2[i]
+            process[i] = Process(
+                target=worker_fun,
+                args=(queues1[i], out_queue, trimFirst, trimLast, trimTo, matcher),
+            )
+            process[i].start()
 
-    print(f"Received {count} elements")
-    print("Wait process")
-    for p in process:
-        p.join()
-    t_end = time.perf_counter() * 1000
-    time_match = math.floor(t_end - t_start)
-    
-    print(f"Matching time: {time_match}")
+        # start file read
+        t_start = time.perf_counter() * 1000
+        with open(inFilePath, "r+b") as infile:
+            t = 0
+            sequence = ff.readfastq_iter(infile, fbufsize=50000, _entrypos=entrypos_c)
+            for i, seq in enumerate(sequence):
+                p = i % chunk
+                if p == 0:
+                    partition = [None] * chunk
+
+                if i == debugLimit:
+                    break
+
+                partition[p] = seq
+
+                if p == chunk - 1:
+                    queues1[t].put(partition)
+                    t = (t + 1) % maxThread
+            if p < chunk - 1:
+                partition = partition[:p]
+                queues1[t].put(partition)
+
+        print(f"Sent {i} elements to the workers")
+
+        for q in queues1:
+            q.put(EOF)
+
+        print("Wait results")
+        with open(outFilePath, "w") as outFile:
+            count = 0
+
+            def write_partition(partition):
+                nonlocal count
+                for p in partition:
+                    outFile.write(p)
+                    count += 1
+
+            if singleQueue:
+                for p in range(maxThread):
+                    process_queue(out_queue, write_partition)
+            else:
+                for q in queues2:
+                    process_queue(q, write_partition)
+
+        print(f"Received {count} elements")
+        print("Wait process")
+        for p in process:
+            p.join()
+        t_end = time.perf_counter() * 1000
+        time_match = math.floor(t_end - t_start)
+
+        print(f"Matching time: {time_match}")
+    else:
+        # Sequential version
+        t_start = time.perf_counter() * 1000
+        with open(inFilePath, "r+b") as infile:
+            sequence = ff.readfastq_iter(infile, fbufsize=50000, _entrypos=entrypos_c)
+            with open(outFilePath, "w") as outFile:
+                for i, seq in enumerate(sequence):
+                    comment = seq[0].decode("utf-8")
+                    line = seq[1].decode("utf-8")
+                    quality = seq[2].decode("utf-8")
+                    match = matcher(line)
+                    tFirst = 0
+                    tLast = 0
+                    count = 0
+
+                    if trimTo and match:
+                        lineLen = len(line[:match])
+                        while lineLen > trimTo:
+                            if count % 2:
+                                tFirst += 1
+                            else:
+                                tLast += 1
+                            count += 1
+                            lineLen -= 1
+
+                    tFirst = max(tFirst, trimFirst)
+                    tLast = max(tLast, trimLast)
+
+                    if match:
+                        line = line[tFirst : match - tLast]
+                        quality = quality[tFirst : match - tLast]
+                    else:
+                        line = line[tFirst : tFirst + trimTo]
+                        quality = quality[tFirst : tFirst + trimTo]
+
+                    outFile.write(f"@{comment}\n{line}\n+\n{quality}\n")
+
+        t_end = time.perf_counter() * 1000
+        time_match = math.floor(t_end - t_start)
+        print(f"Processed {i} elements")
+        print(f"Matching time: {time_match}")
 
     # Align results
     if args.aligner:
@@ -316,7 +350,7 @@ def main():
         time_align = math.floor(t_end - t_start)
         aligned, not_aligned, ignored = parse_bowtie2(out)
         ignored = ignored / count * 100.0
-        
+
         # Print results
         print()
         print("Bowtie alignment")
@@ -345,6 +379,7 @@ def main():
         print(f"- Badly aligned: {bad_aligned:2.2f}%")
         print(f"- Not aligned: {not_aligned:2.2f}%")
         print()
+
 
 if __name__ == "__main__":
     main()
