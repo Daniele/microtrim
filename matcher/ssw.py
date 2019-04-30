@@ -21,8 +21,8 @@ def build(adapter, args):
         matcher.setReference(rline)
         align = matcher.align()
                 
-        if align.optimal_score/len(adapter) >= .8:
-            return -(align.reference_start+len(adapter))
+        if align.optimal_score/len(adapter) >= 1 - args.max_distance:
+            return -(align.reference_start+len(adapter)) + 1
         return None
 
     return match
