@@ -1,12 +1,13 @@
 .vscode/
 
 # Dataset
-data/
+/data/
 
 # Server scripts
-out/
+/out/
 .rsyncignore
 sync*.sh
+*.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
