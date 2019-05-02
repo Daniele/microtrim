@@ -6,6 +6,7 @@ import math
 import re
 import csv
 import time
+from queue import Empty
 from subprocess import PIPE, run
 from multiprocessing import Process, Queue
 
@@ -94,22 +95,6 @@ parser.add_argument(
     help="read only the first N read from the input file",
     default=-1,
 )
-parser.add_argument(
-    "--single-queue",
-    help="use a single output queue instead on one per worker queues",
-    action="store_true",
-    default=False,
-)
-
-
-def process_queue(q, f):
-    """
-    Utility function to iterate over the a queue
-    """
-    partition = q.get()
-    while partition != EOF:
-        f(partition)
-        partition = q.get()
 
 
 def trim_partition(partition, trimFirst, trimLast, trimTo, match_fun):
@@ -155,6 +140,25 @@ def worker_fun(q1, q2, trimFirst, trimLast, trimTo, match_fun):
     q2.put(EOF)
 
 
+def collector_fun(outFilePath, queues):
+    with open(outFilePath, "w") as outFile:
+        count = 0
+        eof_count = 0
+        while eof_count < len(queues):
+            for q in queues:
+                try:
+                    partition = q.get_nowait()
+                    if partition == EOF:
+                        eof_count += 1
+                        continue
+                    for p in partition:
+                        outFile.write(p)
+                        count += 1
+                except Empty:
+                    pass
+    print(f"Received {count} elements")
+
+
 def parse_bowtie2(out):
     ignored = 0
     for line in out.stderr.decode("utf-8").split("\n"):
@@ -194,7 +198,6 @@ def main():
     maxThread = args.workers
     chunk = args.chunk
     debugLimit = args.debug_limit
-    singleQueue = args.single_queue
 
     print()
     if trimFirst == 0:
@@ -226,20 +229,18 @@ def main():
         # build the parallel topology
         process = [None] * maxThread
         queues1 = [None] * maxThread
-        if singleQueue:
-            out_queue = Queue()
-        else:
-            queues2 = [None] * maxThread
+        queues2 = [None] * maxThread
         for i in range(maxThread):
             queues1[i] = Queue()
-            if not singleQueue:
-                queues2[i] = Queue()
-                out_queue = queues2[i]
+            queues2[i] = Queue()
+            out_queue = queues2[i]
             process[i] = Process(
                 target=worker_fun,
                 args=(queues1[i], out_queue, trimFirst, trimLast, trimTo, matcher),
             )
             process[i].start()
+        collector = Process(target=collector_fun, args=(outFilePath, queues2))
+        collector.start()
 
         # start file read
         t_start = time.perf_counter() * 1000
@@ -264,31 +265,13 @@ def main():
                 queues1[t].put(partition)
 
         print(f"Sent {i} elements to the workers")
-
         for q in queues1:
             q.put(EOF)
 
-        print("Wait results")
-        with open(outFilePath, "w") as outFile:
-            count = 0
-
-            def write_partition(partition):
-                nonlocal count
-                for p in partition:
-                    outFile.write(p)
-                    count += 1
-
-            if singleQueue:
-                for p in range(maxThread):
-                    process_queue(out_queue, write_partition)
-            else:
-                for q in queues2:
-                    process_queue(q, write_partition)
-
-        print(f"Received {count} elements")
         print("Wait process")
         for p in process:
             p.join()
+        collector.join()
         t_end = time.perf_counter() * 1000
         time_match = math.floor(t_end - t_start)
 
