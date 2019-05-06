@@ -1,0 +1,7 @@
+matcher	good_alignment	no_feature	low_quality	no_alignment
+fastp	26.25	4.03	34.15	35.57
+adagen-fast	33.22	4.91	30.39	31.48
+adagen	33.41	4.87	31.98	29.74
+leven	33.68	4.64	20.72	40.95
+ndleven	33.91	4.65	19.72	41.73
+ssw	33.81	4.62	26.58	34.99

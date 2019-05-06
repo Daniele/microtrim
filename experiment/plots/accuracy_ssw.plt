@@ -2,8 +2,8 @@ set terminal postscript eps enhanced color "Helvetica, 22"
 set key top right font "Helvetica, 18"
 set title font "Helvetica, 26"
 
-set output '../accuracy_detail.eps'
-set title "HTSeq results for each matcher" 
+set output '../accuracy_ssw.eps'
+set title "HTSeq results for SSW matcher" 
 set ylabel "Percentage %"
 
 set boxwidth 0.9 absolute
@@ -18,10 +18,10 @@ set xtics  norangelimit
 set xtics   ()
 set xrange [ * : * ] noreverse writeback
 set x2range [ * : * ] noreverse writeback
-set yrange [ 32. : 34.5 ] noreverse writeback
+set yrange [ 0.00 : 60. ] noreverse writeback
 set y2range [ * : * ] noreverse writeback
 set zrange [ * : * ] noreverse writeback
 set cbrange [ * : * ] noreverse writeback
 set rrange [ * : * ] noreverse writeback
 
-plot '../data/accuracy_detail.dat' using 2:xtic(1) ti col
+plot '../data/accuracy_ssw.dat' using 2:xtic(1) ti col, '' u 3 ti col, '' u 4 ti col, '' u 5 ti col

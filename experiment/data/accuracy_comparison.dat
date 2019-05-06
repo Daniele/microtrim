@@ -1,5 +1,5 @@
 matcher	good_alignment	bad_alignment	no_alignment
-fastp	20.25	57.71	38.46
+fastp	26.25	38.18	35.57
 adagen-fast	33.22	35.31	31.48
 adagen	33.41	36.85	29.74
 leven	33.68	25.37	40.95
