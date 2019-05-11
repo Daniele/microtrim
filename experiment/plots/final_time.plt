@@ -10,15 +10,17 @@ set title font "Helvetica, 26"
 #Griglia:
 set style line 1 lc rgb '#808080' lt 0 lw 2
 set grid back ls 1
-set ylabel "Completion time (min.)"
+set ylabel "T_c log scale (min.)"
 set xlabel "Parallelism Degree"
 load 'color.pal'
 
-
 set title "Completion Time"
 set output "../final_time.eps"
-set xtics 4
-set xrange[1:48]
+# set xtics 4 
+set ytics (1, 8.78, 37.05, 13.50, 17.94, 4.20)
+set logscale x 2
+set xtics (1,4,8,12,16,20,28,48)
+
 plot\
   "../data/final_ssw.dat"         u 1:($3/1000/60) with lp ls 5 lw 3.5 pt 2 ps 2 title "Striped Smith-Waterman",\
   "../data/final_ndleven.dat"     u 1:($3/1000/60) with lp ls 4 lw 3.5 pt 2 ps 2 title "Damerau-Levenshtein",\
