@@ -10,8 +10,8 @@ from multiprocessing import Process, Queue
 from fastqandfurious import fastqandfurious as ff
 from fastqandfurious._fastqandfurious import entrypos as entrypos_c
 
-from matcher import adaptergen, adaptergen_faster, leven, ndleven, ssw
-from aligner import bowtie, htseq
+from microlib.matcher import adaptergen, adaptergen_faster, leven, ndleven, ssw
+from microlib.aligner import bowtie, htseq
 
 MATCHER_BUILDER = {
     "adagen": adaptergen.build,

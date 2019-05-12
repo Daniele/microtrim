@@ -3,7 +3,7 @@
 
 import argparse
 
-from aligner import bowtie, htseq
+from microlib.aligner import bowtie, htseq
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
